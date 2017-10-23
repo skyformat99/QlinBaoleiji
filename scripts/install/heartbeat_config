@@ -1,0 +1,7 @@
+local       192.168.1.1
+remote      192.168.1.2
+remotename  test2
+vrrp         192.168.1.3
+vrrpmask     24
+pinghost 192.168.1.254
+force    1

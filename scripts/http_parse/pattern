@@ -1,0 +1,2 @@
+(action)=(useradd)&(username)=(.*)&(realname)=(.*?)&.*&(email)=(.*)&(mobilenum)=(.*?)&.*?(groupid1)=(.*?)&.*
+(action)=(resource_group_save)&(secend)=(.*)&(agroupid1_group)=(.*?)&.*&(sessionluser)=(.*)

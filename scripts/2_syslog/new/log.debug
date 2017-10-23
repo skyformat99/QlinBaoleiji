@@ -1,0 +1,26 @@
+2015-04-05 22:01:56	t_load_policy start
+2015-04-05 22:01:56	t_log_process start
+2015-04-05 22:01:56	t_poll_warning_hash start
+2015-04-05 22:01:56	t_load_rule start
+2015-04-09 16:55:17	/home/wuxiaolong/2_syslog/new/log.debug
+2015-04-09 16:55:17	/home/wuxiaolong/2_syslog/new/log.debug
+2015-09-05 22:22:39	t_load_policy start
+2015-09-05 22:22:39	t_log_process start
+2015-09-05 22:22:39	t_poll_warning_hash start
+2015-09-05 22:22:39	t_load_rule start
+2015-09-05 22:35:11	t_load_policy start
+2015-09-05 22:35:11	t_log_process start
+2015-09-05 22:35:11	t_poll_warning_hash start
+2015-09-05 22:35:11	t_load_rule start
+2015-09-05 22:35:34	Runtime Error in <log_process> 127.0.0.1||user||notice||notice||root:||2015-09-05 22:35:33||root||root: test, DBD::mysql::st execute failed: Unknown column '测试' in 'field list' at ./logs.pl line 512, <$fd_fr> line 11.
+
+2015-09-05 22:37:28	Runtime Error in <log_process> 127.0.0.1||user||notice||notice||root:||2015-09-05 22:37:28||root||root: test, DBD::mysql::st execute failed: Unknown column '测试' in 'field list' at ./logs.pl line 512, <$fd_fr> line 137.
+
+2015-09-05 22:40:35	t_load_policy start
+2015-09-05 22:40:35	t_log_process start
+2015-09-05 22:40:35	t_poll_warning_hash start
+2015-09-05 22:40:35	t_load_rule start
+2015-10-01 00:28:30	t_load_policy start
+2015-10-01 00:28:30	t_log_process start
+2015-10-01 00:28:30	t_poll_warning_hash start
+2015-10-01 00:28:30	t_load_rule start

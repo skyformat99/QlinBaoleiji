@@ -1,0 +1,189 @@
+#include <unistd.h>
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include<termios.h>
+#include<fcntl.h>
+#include<string.h>
+#define CONLINELENGTH 512
+
+struct timeval tv,tvpre,tvstart,tvend;
+struct timezone tz;
+int sid;
+int fd;
+int start_time=0;
+int strlength=0;
+double speed=1;
+double progress_rate=0;
+int g_stop=0;
+char * string;
+char content_command;
+
+fd_set rfds,rs;
+struct timeval key_tv;
+
+int i,r,q,j;
+struct termios saveterm,nt;
+int key_fd=0;
+unsigned char c,buf[32];
+
+char confLine[CONLINELENGTH] = {};
+char context[CONLINELENGTH] ={};
+FILE * fp;
+char *locate = NULL;
+char *pmove = NULL;
+char *pline;
+char *sql_query;
+int string_length=10000;
+int itl;
+
+
+void my_exit()
+{
+    printf("\n\r<<Replay End>>\n\r");
+    sleep(3);
+    printf("\n\rpress ENTER to quit\n\r");
+    getchar();
+	tcsetattr(key_fd,TCSANOW,&saveterm);
+	system("stty sane");
+	exit(1);
+}
+
+void seek_replay(int time)
+{
+	start_time=time;
+	if(time>tvend.tv_sec)
+	{
+		return;
+	}
+//	printf("%c%c%c%c%c%c",0x1b,0x5b,0x48,0x1b,0x5b,0x4a);
+	lseek(fd,0,SEEK_SET);
+	if(start_time<tvstart.tv_sec)
+	{
+		return;
+	}
+}
+
+int main(int argc, char *argv[])
+{
+	fd = open(argv[1],O_RDONLY);
+
+	if(argc==3)
+	{
+		start_time=atoi(argv[2]);
+	}
+
+	if(fd<0)
+	{
+		my_exit(1);
+	}
+
+	string=malloc(10000);
+	bzero(string,10000);
+
+    while(1)
+    {
+        if(read(fd,&tv,sizeof(tv))<sizeof(tv))
+        {
+			break;
+        }
+
+        if(read(fd,&content_command,1)<1)
+        {
+            break;
+        }
+
+        if(read(fd,&strlength,sizeof(strlength))<sizeof(strlength))
+        {
+			break;
+        }
+
+        if(read(fd,string,strlength)<strlength)
+        {
+			break;
+        }
+        bzero(string,10000);
+    }
+	memcpy(&tvend,&tv,sizeof(tv));
+
+	lseek(fd,0,SEEK_SET);
+	if(read(fd,&tv,sizeof(tv))<sizeof(tv))
+	{
+		my_exit(1);
+	}
+
+	memcpy(&tvpre,&tv,sizeof(tv));
+	memcpy(&tvstart,&tv,sizeof(tv));
+
+    if(read(fd,&content_command,1)<1)
+    {
+        my_exit(1);
+    }
+
+	if(read(fd,&strlength,sizeof(strlength))<sizeof(strlength))
+	{
+		my_exit(1);
+	}
+
+	read(fd,string,strlength);
+	if(tv.tv_sec>start_time && content_command=='1')
+	{
+		write(1,string,strlength);
+	}
+
+	while(1)
+	{
+		if(read(fd,&tv,sizeof(tv))<sizeof(tv))
+		{
+			my_exit(1);
+		}
+
+        if(read(fd,&content_command,1)<1)
+        {
+            my_exit(1);
+        }
+
+		if(read(fd,&strlength,sizeof(strlength))<sizeof(strlength))
+		{
+			my_exit(1);
+		}
+		
+		if(read(fd,string,strlength)<strlength)
+		{
+//			printf("read3 err\n");
+			my_exit(1);
+		}
+
+        if(tv.tv_sec<start_time)
+        {
+//          printf("continue2\n");
+            memcpy(&tvpre,&tv,sizeof(tv));
+            continue;
+        }
+        
+		if(tv.tv_sec<start_time)
+		{
+//			printf("continue2\n");
+			memcpy(&tvpre,&tv,sizeof(tv));
+			continue;
+		}
+		if(tv.tv_sec-tvpre.tv_sec>2)
+		{
+			sleep(2);
+		}
+		else if((1000000*(tv.tv_sec-tvpre.tv_sec)+(tv.tv_usec-tvpre.tv_usec))>0)
+		{
+			usleep((1000000*(tv.tv_sec-tvpre.tv_sec)+(tv.tv_usec-tvpre.tv_usec))/speed);
+		}
+        if(content_command=='1')
+        {
+		    write(1,string,strlength);
+        }
+		bzero(string,10000);
+		memcpy(&tvpre,&tv,sizeof(tv));
+	}
+	my_exit(1);
+}

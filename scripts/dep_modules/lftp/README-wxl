@@ -1,0 +1,14 @@
+先 yum update gnutls
+yum install readline-devel
+yum install gnutls-devel
+
+./configure
+make
+make install
+如果有rpm的装好的包，先rpm -e lftp给它删了
+
+如果make有错，尝试
+./configure  --without-gnutls   从头来
+
+装好的路径是/usr/local/bin/， 环境变量没有的话，加符号链接
+ln -s /usr/local/bin/lftp /usr/bin/lftp

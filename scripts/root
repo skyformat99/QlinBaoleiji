@@ -1,0 +1,27 @@
+0 * * * * /opt/freesvr/audit/bin/clear.sh > /var/log/clear.log
+10 0 * * * /home/wuxiaolong/3_status/status_day_count.pl
+0 1 * * 1 /home/wuxiaolong/3_status/status_week_count.pl
+0 1 1 * * /home/wuxiaolong/3_status/status_month_count.pl
+#*/5 * * * * /home/wuxiaolong/3_status/status.pl
+*/5 * * * * /home/wuxiaolong/3_status/local_process_status.pl
+0 1 * * * /opt/freesvr/audit/gateway/log/bin/db_accounting.pl
+1 1 * * * /home/wuxiaolong/5_backup/backup.pl
+*/5 * * * * /home/wuxiaolong/2_syslog/linux_login.pl
+*/5 * * * * /home/wuxiaolong/2_syslog/windows_login.pl
+*/5 * * * * /home/wuxiaolong/2_syslog/record.pl;/home/wuxiaolong/2_syslog/countlogs_minute.pl;/home/wuxiaolong/2_syslog/relation.pl
+0 * * * * /home/wuxiaolong/2_syslog/countlogs_hour.pl
+*/5 * * * * /home/wuxiaolong/2_syslog/delete_realtime_table.pl
+0 0 * * * /home/wuxiaolong/2_syslog/countlogs_day.pl
+0 0 * * * /home/wuxiaolong/2_syslog/login_day_count.pl
+0 1 * * 1 /home/wuxiaolong/2_syslog/countlogs_week.pl
+0 1 * * 1 /home/wuxiaolong/2_syslog/login_week_count.pl
+0 1 1 * * /home/wuxiaolong/2_syslog/countlogs_month.pl
+0 1 1 * * /home/wuxiaolong/2_syslog/login_month_count.pl
+0 0 * * * /opt/freesvr/audit/passwd/sbin/freesvr-passwd
+*/5 * * * * /home/wuxiaolong/3_status/snmp_ssh_status.pl
+*/5 * * * * /home/wuxiaolong/3_status/snmpint_get.pl
+*/5 * * * * /home/wuxiaolong/3_status/port_scan.pl
+*/5 * * * * /home/wuxiaolong/3_status/app_status.pl 
+4 0 * * * /home/wuxiaolong/3_status/status_day_report.pl
+8 0 * * 1 /home/wuxiaolong/3_status/status_week_report.pl
+8 0 1 * * /home/wuxiaolong/3_status/status_month_report.pl
