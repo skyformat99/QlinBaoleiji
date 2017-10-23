@@ -1,10 +1,7 @@
-麒麟堡垒机安装分为ISO安装、安装包、镜像安装三种方式：
+=麒麟堡垒机安装分为ISO安装、安装包、云镜像安装三种方式：
 
-ISO安装方式适合硬件物理机、可以挂CDROM的虚机等方式，安装会将存贮格式化分区，然后安装操作系统和堡垒机软件。
 
-安装包方式适合腾讯云或某些特殊的硬件、虚机无法使用光盘安装的环境，即先安装一个mini的centos 7.x系统，然后把安装包上传解压，然后运行一个yum程序和一个安装脚本即可完成安装
-
-1.1 OPEN.ISO系统安装（适用硬件、VM）：
+-安装方式一. ISO 系统安装（适用硬件、VM）：
 
 官网下载地址：
 http://get.tosec.com.cn/open.iso
@@ -17,7 +14,7 @@ http://pan.baidu.com/s/1mhSAmUG
 安装过程为使用cdrom启动，启动后到一个菜单，在默认的GPT上回车，即可完成，安装过程大约需要20分钟
 
 
-1.2 安装包安装方式（适用无法使用光驱的硬件或VM）：
+-安装方式二. 安装包安装方式（适用无法使用光驱的硬件或VM）：
 
 官网下载地址:
 http://get.tosec.com.cn/centos7.tar.gz
@@ -43,7 +40,7 @@ bash install.sh
 
 
 
-1.3 阿里云、华为云镜像安装：
+-安装方式四. 阿里云、华为云镜像安装：
 
 阿里云镜像地址：
 https://market.aliyun.com/products/56848019/cmjj021886.html?spm=5176.730005.0.0.9Z0mzT
@@ -52,7 +49,7 @@ https://market.aliyun.com/products/56848019/cmjj021886.html?spm=5176.730005.0.0.
 https://app.huaweicloud.com/product/00301-47088-0--0
 
 
-1.4 产品使用：
+使用文档：
 
  管理员使用步骤:
  http://www.tosec.com.cn/forum.php?mod=viewthread&tid=36
