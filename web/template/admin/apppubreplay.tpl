@@ -1,1 +1,0 @@
-{{if $smarty.session.urlprotocol eq 1}}baoleiji{{else}}freesvr{{/if}}://"&action=StartMstscAutoRunReplay&autorun={{$autorun}}&host={{$host}}&port={{$port}}&username={{$username}}&password={{$password}}&path={{$path}}&param={{$param}}&disconnectsecouldapp={{$disconnectsecouldapp}}&debug={{$smarty.session.ADMIN_FREESVRDEBUG}}&"
