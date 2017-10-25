@@ -1,0 +1,589 @@
+#include "ci.h"
+
+/* Local functions */
+static void distory_ci(CI_INFO *ci);
+static int 
+recv_struct(int fd, unsigned int seqno, CI_RET *cr);
+static int 
+send_struct(int fd, CI_RET *cr);
+static int
+recv_spkt(int fd, unsigned int *seqno, unsigned char *c2s, struct simple_packet *spkt);
+static int 
+send_spkt(int fd, unsigned int seqno, unsigned char c2s, struct simple_packet *spkt);
+static void
+do_command_inspection_c2s(CI_INFO *ci, struct simple_packet *spkt);
+static void
+do_command_inspection_s2c(CI_INFO *ci, struct simple_packet *spkt);
+
+/*
+ * Write N bytes to a file descriptor
+ */
+static ssize_t
+writen( int fd, void *buf, size_t n )
+{
+    size_t tot = 0;
+    ssize_t w;
+
+    do
+    {
+        if(( w = write( fd, ( void * )(( u_char * )buf + tot ), n - tot ) ) <= 0 )
+            return( w );
+
+        tot += w;
+    }
+    while( tot < n );
+
+    return( tot );
+}
+
+/*
+ * Read N bytes from a file descriptor
+ */
+static ssize_t
+readn( int fd, void *buf, size_t n )
+{
+    size_t tot = 0;
+    ssize_t r;
+
+    do
+    {
+        if(( r = read( fd, ( void * )(( u_char * )buf + tot ), n - tot ) ) <= 0 )
+            return( r );
+
+        tot += r;
+    }
+    while( tot < n );
+
+    return( tot );
+}
+
+int command_inspection_fork(CI_INFO *ci)
+{
+	int sp[2];
+	int ret, pid;
+
+	/* Set up the unencrypted data channel to the client */
+	if (socketpair(AF_LOCAL, SOCK_STREAM, 0, sp) < 0) {
+		return (-1);
+	}
+
+	/* Fork off the child that connects to the real target */
+	if ((pid = fork()) < 0) {
+		return (-1);
+	}
+	/* Child process, Command Inspection */
+	else if (pid == 0) {
+		/* Child use sp[1] */
+		close(sp[0]);
+		command_inspection_child_loop(sp[1], ci);
+
+		/* Nerver got here */
+		exit(0);
+	}
+	/* Parent process, SSH sessions */
+	else {
+		/* Parent use sp[0] */
+		signal(SIGPIPE, SIG_IGN);
+		close(sp[1]);
+		command_inspection_parent_wait_fork(sp[0], ci);
+	}
+
+	fprintf(stderr, "[%s] fd=%d\n", __func__, sp[0]);
+	ci->sp = sp[0];
+	return sp[0];
+}
+
+/* Command Inspection */
+int
+command_inspection_child_loop(int fd, CI_INFO *ci)
+{
+	int nfd, ret, pid;
+	int pktlen, nread, nwritten;
+	unsigned char pktbuf[BUFSIZE];
+	fd_set readfds, tmpfds;
+	CI_RET cr;
+	struct simple_packet spkt;
+	unsigned int seqno;
+	unsigned char c2s;
+
+	/* Initialize local variables */
+	//todo
+	
+	/* Send successed to parent */
+	memset(&cr, 0x00, sizeof(cr));
+	pid = getpid();
+	cr.pid = pid;
+	cr.seqno = ci->seqno;
+	send_struct(fd, &cr);
+	
+	/* main loop... */
+	FD_ZERO(&readfds);
+	FD_SET(fd, &readfds);
+	nfd = fd + 1;
+	
+	while (1) {
+		/* reset readfds */
+		memcpy(&tmpfds, &readfds, sizeof(fd_set));
+
+		ret = select(nfd, &tmpfds, (fd_set *) NULL, (fd_set *) NULL, NULL);
+		if (ret == -1)
+		{
+			if (errno == EINTR)
+				continue;
+			else {
+				perror("select");
+				continue;
+			}
+		}
+		else if (ret == 0) {
+			/* Never got here! */
+		}
+		else if (FD_ISSET(fd, &tmpfds)) {
+			memset(&spkt, 0x00, sizeof(spkt));
+			
+			if (recv_spkt(fd, &seqno, &c2s, &spkt) == -1) {
+				return -1;
+			}
+			else {
+
+				if (c2s == 0x01) {
+					do_command_inspection_c2s(ci, &spkt);
+				}
+				else {
+					do_command_inspection_s2c(ci, &spkt);
+				}
+
+				cr.seqno = seqno;
+				send_struct(fd, &cr);
+			}
+		}
+	}
+
+	/* Never got here! */
+	return 0;
+}
+
+int
+command_inspection_parent_wait_fork(int fd, CI_INFO *ci)
+{
+	int nfd, ret;
+	int pktlen, nread, nwritten;
+	fd_set readfds, tmpfds;
+	CI_RET cr;
+
+	ret = recv_struct(fd, ci->seqno, &cr);
+	if (ret == -1) {
+		close(fd);
+		command_inspection_fork(ci);
+	}
+	else {
+		fprintf(stderr, "Fork successed, pid=%d\n", cr.pid);
+	}
+	/* Never got here! */
+	return 0;
+}
+
+int 
+command_inspection_parent_wait_ci_c2s(CI_INFO *ci, struct simple_packet *spkt)
+{
+	int ret, fd;
+	CI_RET cr;
+	unsigned char c2s = 0x01;
+	
+	fd = ci->sp;
+	ci->seqno++;
+	ret = send_spkt(fd, ci->seqno, c2s, spkt);
+	if (ret == -1) {
+		close(fd);
+		command_inspection_fork(ci);
+	}
+
+	ret = recv_struct(fd, ci->seqno, &cr);
+	if (ret == -1) {
+		close(fd);
+		command_inspection_fork(ci);
+	}
+
+	return 0;
+}
+
+int 
+command_inspection_parent_wait_ci_s2c(CI_INFO *ci, struct simple_packet *spkt)
+{
+	int ret, fd;
+	CI_RET cr;
+	unsigned char c2s = 0x00;
+	
+	fd = ci->sp;
+	ci->seqno++;
+	ret = send_spkt(fd, ci->seqno, c2s, spkt);
+	if (ret == -1) {
+		close(fd);
+		command_inspection_fork(ci);
+	}
+
+	ret = recv_struct(fd, ci->seqno, &cr);
+	if (ret == -1) {
+		close(fd);
+		command_inspection_fork(ci);
+	}
+
+	return 0;
+}
+
+CI_INFO *
+initialize_ci_at_first(int session_id, int devices_id, const char *radius_username, const char *dest_ip, const char *dest_username, 
+						MYSQL *sql, const char *forbidden)
+{
+	CI_INFO *ci = NULL;
+	struct tm *p;
+	struct timeval tv;
+	char tstamp[128];
+	char replaycache[256], logcache[256];
+	int pid, last_insert_id;
+	struct stat filestat;
+	char query[2048];
+	MYSQL_ROW row;
+	MYSQL_RES *res;
+
+    pid = getpid();
+	gettimeofday(&tv, NULL);
+	p = localtime(&(tv.tv_sec));
+	strftime(tstamp, sizeof(tstamp), "%Y_%m_%d", p);
+	snprintf(logcache, sizeof(logcache), "/opt/freesvr/audit/gateway/log/ssh/replay/%s", tstamp);
+	snprintf(replaycache, sizeof(replaycache), "/opt/freesvr/audit/gateway/log/ssh/replay/%s", tstamp);
+
+	if (stat(logcache, &filestat) != 0) {
+		mkdir(logcache, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	}
+
+	if (stat(replaycache, &filestat) != 0) {
+		mkdir(replaycache, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	}
+
+	if ((ci = malloc(sizeof(CI_INFO))) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+	else {
+		memset(ci, 0x00, sizeof(CI_INFO));
+	}
+
+	if ((ci->monitor_shell_pipe_name_tm = malloc(512)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->monitor_shell_pipe_name_fm = malloc(512)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->logfilename = malloc(512)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->replayfilename = malloc(512)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->radius_username = malloc(strlen(radius_username) + 1)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->dest_ip = malloc(strlen(dest_ip) + 1)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	if ((ci->dest_username = malloc(strlen(dest_username) + 1)) == NULL) {
+		perror("malloc");
+		distory_ci(ci);
+		return NULL;
+	}
+
+	sprintf(ci->monitor_shell_pipe_name_tm, "%s/monitor_shell=%d.0_tm", BINPATH, getpid());
+	sprintf(ci->monitor_shell_pipe_name_fm, "%s/monitor_shell=%d.0_fm", BINPATH, getpid());
+
+	bzero(tstamp, sizeof(tstamp));
+	strftime(tstamp, sizeof(tstamp), "%Y_%m_%d_%I:%M:%S", p);
+	snprintf(&tstamp[strlen(tstamp)], sizeof(tstamp) - strlen(tstamp), "_%06lu", tv.tv_usec);
+
+	snprintf(ci->logfilename, 512, "%s/ssh_log_%d_%s", logcache, pid, tstamp);
+	snprintf(ci->replayfilename, 512, "%s/ssh_replay_%d_%s", replaycache, pid, tstamp); 
+	
+	snprintf(ci->radius_username, strlen(radius_username) + 1, "%s", radius_username);
+	snprintf(ci->dest_ip, strlen(dest_ip) + 1, "%s", dest_ip);
+	snprintf(ci->dest_username, strlen(dest_username) + 1, "%s", dest_username);
+
+	/*if ((ci->fd1 = open(ci->logfilename, O_CREAT|O_WRONLY, S_IRUSR|S_IRGRP|S_IROTH)) < 0 ||
+		(ci->fd2 = open(ci->replayfilename, O_CREAT|O_WRONLY, S_IRUSR|S_IRGRP|S_IROTH)) < 0) {
+		perror("open");
+		distory_ci(ci);
+		return NULL;
+	}*/
+	
+	snprintf(query, sizeof(query), 
+			"INSERT INTO sessions (sid,cli_addr,addr,type,user,start,end,luser,logfile,replayfile,s_bytes,server_addr,dangerous,jump_total,total_cmd,pid,sport,dport,logincommit)"\
+			"values (NULL,'%s','%s','ssh','%s',now(),now(),'%s','%s','%s',0,'%s',0,0,0,%d,'%s','%s',%d)", 
+			sip, dip, user, radius_username, logfilename, replayfilename, audit_address, getpid(), sport, dport, login_commit);
+	mysql_query(sql, query);
+	snprintf(query, sizeof(query), "select last_insert_id()");
+	mysql_query(sql, query);
+	res = mysql_store_result(sql);
+	mysql_fetch_row(res);
+	last_insert_id = atoi(row[0]);
+
+	ci->session_id = session_id;
+	ci->devices_id = devices_id;
+	ci->sql = sql;
+	ci->sid = last_insert_id;
+	strcpy(ci->forbidden, forbidden);	
+	return ci;
+}
+
+static void
+distory_ci(CI_INFO *ci)
+{
+	if (ci != NULL) {
+		if (ci->monitor_shell_pipe_name_fm != NULL) {
+			free(ci->monitor_shell_pipe_name_fm);
+			ci->monitor_shell_pipe_name_fm = NULL;
+		}
+		if (ci->monitor_shell_pipe_name_tm != NULL) {
+			free(ci->monitor_shell_pipe_name_tm);
+			ci->monitor_shell_pipe_name_tm = NULL;
+		}
+		if (ci->logfilename != NULL) {
+			free(ci->logfilename);
+			ci->logfilename = NULL;
+		}
+		if (ci->replayfilename != NULL) {
+			free(ci->replayfilename);
+			ci->replayfilename = NULL;
+		}
+		if (ci->radius_username != NULL) {
+			free(ci->radius_username);
+			ci->radius_username = NULL;
+		}
+		if (ci->dest_ip != NULL) {
+			free(ci->dest_ip);
+			ci->dest_ip = NULL;
+		}
+		if (ci->dest_username != NULL) {
+			free(ci->dest_username);
+			ci->dest_username = NULL;
+		}
+
+		free(ci);
+	}
+}
+
+static int 
+recv_struct(int fd, unsigned int seqno, CI_RET *cr)
+{
+	int nfd, ret, failure;
+	int pktlen, nread;
+	fd_set readfds, tmpfds;
+	unsigned char pktbuf[BUFSIZE];
+	struct timeval timeout;
+	
+	FD_ZERO(&readfds);
+	FD_SET(fd, &readfds);
+	nfd = fd + 1;
+
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 10 * 1000;
+	failure = 0;
+	
+	while (1) {
+		/* reset readfds */
+		memcpy(&tmpfds, &readfds, sizeof(fd_set));
+
+		ret = select(nfd, &tmpfds, (fd_set *) NULL, (fd_set *) NULL, &timeout);
+		if (ret == -1)
+		{
+			if (errno == EINTR)
+				continue;
+			else {
+				perror("select");
+				continue;
+			}
+		}
+		else if (ret == 0) {
+			//fprintf(stderr, "[%s] timeout.\n", __func__);
+			break;
+		}
+		else if (FD_ISSET(fd, &tmpfds)) {
+			if ((nread = read(fd, &pktlen, sizeof(pktlen))) < sizeof(pktlen)) {
+				failure = -1;
+				perror("read");
+				break;
+			}
+			pktlen = ntohl(pktlen);
+			if ((nread = read(fd, cr, pktlen)) < pktlen) {
+				failure = -1;
+				perror("read");
+				break;
+			}
+			
+			if (cr->seqno == seqno) {
+				fprintf(stderr, "seqno=%d\n", seqno);
+				break;
+			}
+			else {
+				fprintf(stderr, "%06lu cr->seqno=%u, seqno=%u\n", timeout.tv_usec, cr->seqno, seqno);
+			}	
+		}
+	}
+	
+	return failure;
+}
+
+static int
+send_struct(int fd, CI_RET *cr)
+{
+	int len, pktlen, nwritten;
+	unsigned char pktbuf[BUFSIZE];
+	
+	len = sizeof(CI_RET);
+	pktlen = htonl(len);
+	if ((nwritten = write(fd, &pktlen, sizeof(pktlen))) < sizeof(pktlen)) {
+		perror("write");
+		return (-1);
+	}
+	if ((nwritten = write(fd, cr, len)) < len) {
+		perror("write");
+		return (-1);
+	}
+	
+	return 0;
+}
+
+static int
+recv_spkt(int fd, unsigned int *seqno, unsigned char *c2s, struct simple_packet *spkt)
+{
+	int nread;
+	unsigned int seq;
+	unsigned char c2s_flags;
+
+	/* recv seqno */
+	if ((nread = readn(fd, &seq, sizeof(seq))) <= 0) {
+		return -1;
+	}
+
+	if (seqno != NULL) {
+		*seqno = ntohl(seq);
+	}
+	
+	/* recv stream direct */
+	if ((nread = readn(fd, &c2s_flags, sizeof(c2s_flags))) <= 0) {
+		return -1;
+	}
+
+	if (c2s != NULL) {
+		*c2s = c2s_flags;
+	}
+
+	/* recv spkt */
+	if ((nread = readn(fd, spkt, 8)) <= 0) {
+		return -1;
+	}
+
+	if (spkt->len > sizeof(spkt->data)) {
+        fprintf(stderr, "** Darn, buffer to small (%u) for received packet (%u)\n", spkt->len, sizeof(spkt->data));
+    }
+	
+    if (spkt->len && (nread = readn(fd, spkt->data, spkt->len)) <= 0) {
+		return -1;
+	}
+	
+	return 0;
+}
+
+static int 
+send_spkt(int fd, unsigned int seqno, unsigned char c2s, struct simple_packet *spkt)
+{
+	int len, nwritten;
+	unsigned int seq;
+	unsigned char c2s_flags = c2s;
+
+	/* Send seqno */
+	len = sizeof(unsigned int);
+	seq = htonl(seqno);
+	if ((nwritten = write(fd, &seq, len)) < len) {
+		fprintf(stderr, "nwritten = %u\n", nwritten);
+		perror("write");
+		return (-1);
+	}
+
+	/* Send stream direct */
+	if ((nwritten = write(fd, &c2s_flags, sizeof(c2s_flags))) < sizeof(c2s_flags)) {
+		fprintf(stderr, "nwritten = %u\n", nwritten);
+		perror("write");
+		return (-1);
+	}
+
+	/* Send spkt */
+	if (write(fd, spkt, spkt->len + 8) != spkt->len + 8) {
+		fprintf(stderr, "nwritten = %u\n", nwritten);
+	    perror("write");
+		return (-1);	
+	}
+	
+    return 0;
+}
+
+void
+do_command_inspection_c2s(CI_INFO *ci, struct simple_packet *spkt)
+{
+	    /* telnet_write2log2 */
+}
+
+void
+do_command_inspection_s2c(CI_INFO *ci, struct simple_packet *spkt)
+{
+	    /* telnet_write2log */
+}
+
+#if 0
+int main()
+{
+	/* Initialize ci for each ssh session */
+	CI_INFO *g_ci;
+	int fd;
+	g_ci = initialize_ci_at_first(0, 515, "admin", "172.16.210.99", "root");
+
+	puts(g_ci->monitor_shell_pipe_name_fm);
+	puts(g_ci->monitor_shell_pipe_name_tm);
+	puts(g_ci->logfilename);
+	puts(g_ci->replayfilename);
+	puts(g_ci->radius_username);
+	puts(g_ci->dest_ip);
+	puts(g_ci->dest_username);
+	
+	fd = command_inspection_fork(g_ci);
+
+	while (1) {
+		struct simple_packet spkt;
+		CI_RET cr;
+		spkt.type = 94;
+		spkt.len = 1;
+		spkt.data[0] = 'a';
+		command_inspection_parent_wait_ci_c2s(g_ci, &spkt);
+		usleep(100 * 1000);
+	}
+
+	return 0;
+}
+#endif

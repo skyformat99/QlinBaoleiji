@@ -1,0 +1,179 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+
+our($process_name,$option) = @ARGV;
+our %service_hash;
+open(my $fd_fr,"</opt/freesvr/audit/etc/process.ini");
+#open(my $fd_fr,"<./process.ini");
+
+while(my $line = <$fd_fr>)
+{
+	chomp $line;
+	$line =~ s/^\[//;
+	$line =~ s/\]$//;
+	my ($name,$cmd) = split /=/,$line;
+	unless(exists $service_hash{$name})
+	{
+		my @temp_arr;
+		push @temp_arr,$cmd;
+		if($name eq "ftp-audit") {push @temp_arr,21;}
+		elsif($name eq "vpn") {push @temp_arr,8443;}
+		elsif($name eq "Freesvr_RDP") {push @temp_arr,3389;}
+		elsif($name eq "Freesvr_PLAY") {push @temp_arr,3390;}
+		elsif($name eq "Freesvr_MONITOR") {push @temp_arr,3391;}
+		elsif($name eq "ssh-audit") {push @temp_arr,22;}
+		elsif($name eq "radiusd") {push @temp_arr,1812;}
+		elsif($name eq "freesvr-authd") {push @temp_arr,59827;}
+		elsif($name eq "tcpreassembly") {push @temp_arr,0;}
+
+		$service_hash{$name} = \@temp_arr;
+	}
+}
+
+my $val = $service_hash{$process_name};
+
+if($option eq "status")
+{
+	my $status = &check_process($process_name,$val->[0],$val->[1]);
+	exit $status;
+}
+elsif($option eq "stop")
+{
+	my $status = &stop_process($process_name,$val->[0],$val->[1]);
+	exit $status;
+}
+elsif($option eq "start")
+{
+	my $status = &start_process($process_name,$val->[0],$val->[1]);
+	exit $status;
+}
+elsif($option eq "restart")
+{
+	my $status = &stop_process($process_name,$val->[0],$val->[1]);
+	if($status == 0) {exit $status;}
+	$status = &start_process($process_name,$val->[0],$val->[1]);
+	exit $status;
+}
+
+sub check_process
+{
+	my($name,$cmd,$port) = @_;
+	if($port != 0)
+	{
+		my $result = `/usr/sbin/lsof -n -i:$port`;
+		if($result ne "") {return 1;}
+		else {return 0;}
+	}
+	else
+	{
+		my $result = `ps -ef | grep $name | grep -v -E "grep|manageprocess"`;
+		if($result ne "") {return 1;}
+		else {return 0;}
+	}
+}
+
+sub stop_process
+{
+	my($name,$cmd,$port) = @_;
+	if($port != 0)
+	{
+		my $result = `/usr/sbin/lsof -n -i:$port`;
+		if($result ne "")
+		{
+			my %pid_arr;
+			my @result_arr = split /\n/,$result;
+			foreach my $line(@result_arr)
+			{
+				my $pid = (split /\s+/,$line)[1];
+				unless($pid =~ /\d+/) {next;}
+				unless(exists $pid_arr{$pid})
+				{
+					$pid_arr{$pid} = 1;
+				}
+			}
+
+			foreach my $pid(keys %pid_arr)
+			{
+				kill 9,$pid;
+			}
+		}
+
+		if($name eq "vpn")
+		{
+			$result = `killall -9 $name`;
+		}
+	}
+	else
+	{
+		my $result = `ps -ef | grep $name | grep -v -E "grep|manageprocess"`;
+		if($result ne "")
+		{
+			my %pid_arr;
+			my @result_arr = split /\n/,$result;
+			foreach my $line(@result_arr)
+			{
+				my $pid = (split /\s+/,$line)[1];
+				unless($pid =~ /\d+/) {next;}
+				unless(exists $pid_arr{$pid})
+				{
+					$pid_arr{$pid} = 1;
+				}
+			}
+
+			foreach my $pid(keys %pid_arr)
+			{
+				kill 9,$pid;
+			}
+		}
+	}
+	return 1;
+}
+
+sub start_process
+{
+	my($name,$cmd,$port) = @_;
+
+	my $delete_file;
+	if($name eq "Freesvr_RDP")
+	{
+		$delete_file = "/var/run/freesvr_rdp[proxy].pid";
+	}
+	elsif($name eq "Freesvr_PLAY")
+	{
+		$delete_file = "/var/run/freesvr_rdp[replay].pid";
+	}
+	elsif($name eq "Freesvr_MONITOR")
+	{
+		$delete_file = "/var/run/freesvr_rdp[monitor].pid";
+	}
+
+	if(defined $delete_file)
+	{
+		unlink $delete_file;
+	}
+
+	if($port != 0)
+	{
+		my $result = `/usr/sbin/lsof -n -i:$port`;
+		if($result eq "")
+		{
+			my $status = `$cmd 1>/dev/null 2>&1`;
+			$status = `/usr/sbin/lsof -n -i:$port`;
+			if($status eq ""){return 0;}
+			else{return 1;}
+		}
+	}
+	else
+	{
+		my $result = `ps -ef | grep $name | grep -v -E "grep|manageprocess"`;
+		if($result eq "")
+		{
+			my $status = `$cmd`;
+			$status = `ps -ef | grep $name | grep -v -E "grep|manageprocess"`;
+			if($status eq ""){return 0;}
+			else{return 1;}
+		}
+	}
+	return 1;
+}
